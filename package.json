@@ -1,0 +1,11 @@
+{
+  "name": "ai-hye-toeic-speaking",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && mvnw.cmd spring-boot:run",
+    "install:frontend": "cd frontend && npm install",
+    "build": "cd frontend && npm run build"
+  }
+}
