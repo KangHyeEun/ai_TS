@@ -6,6 +6,7 @@
         <router-link to="/">홈</router-link>
         <router-link to="/practice">연습하기</router-link>
         <router-link to="/my-records">내 기록</router-link>
+        <span v-if="store.currentUser" class="user-info">{{ store.currentUser.nickname }}님</span>
       </div>
     </nav>
     <main class="main-content">
@@ -15,6 +16,8 @@
 </template>
 
 <script setup>
+import { useSpeakingStore } from './stores/speaking'
+const store = useSpeakingStore()
 </script>
 
 <style scoped>
@@ -54,6 +57,15 @@
 .nav-links a.router-link-active {
   background: rgba(255,255,255,0.2);
   color: #fff;
+}
+
+.user-info {
+  color: #fff;
+  font-weight: 600;
+  background: rgba(255,255,255,0.2);
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.9rem;
 }
 
 .main-content {

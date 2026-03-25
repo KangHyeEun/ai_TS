@@ -103,6 +103,18 @@ export const useSpeakingStore = defineStore('speaking', () => {
     }
   ])
 
+  // 현재 로그인 사용자
+  const currentUser = ref(null)
+
+  async function fetchCurrentUser() {
+    try {
+      const res = await fetch('/api/user/current')
+      currentUser.value = await res.json()
+    } catch (err) {
+      console.error('사용자 정보 조회 실패:', err)
+    }
+  }
+
   // 연습 기록
   const records = ref([])
 
@@ -148,8 +160,9 @@ export const useSpeakingStore = defineStore('speaking', () => {
     }
   }
 
-  // 앱 시작 시 기록 로드
+  // 앱 시작 시 사용자 정보 + 기록 로드
+  fetchCurrentUser()
   fetchRecords()
 
-  return { parts, records, totalPracticeCount, todayPracticeCount, fetchRecords, addRecord, clearRecords }
+  return { parts, currentUser, records, totalPracticeCount, todayPracticeCount, fetchCurrentUser, fetchRecords, addRecord, clearRecords }
 })

@@ -24,7 +24,7 @@ public class RecordController {
     }
 
     @PostMapping
-    public ResponseEntity<Map<String, Long>> create(@RequestBody RecordRequest request) {
+    public ResponseEntity<Map<String, Integer>> create(@RequestBody RecordRequest request) {
         PracticeRecord record = recordService.createRecord(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(Map.of("id", record.getId()));

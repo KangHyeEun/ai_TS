@@ -8,24 +8,28 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "practice_records")
+@Table(name = "users")
 @Getter
 @Setter
 @NoArgsConstructor
-public class PracticeRecord {
+public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    @Column(name = "user_id")
+    private Integer userId;
 
-    @Column(name = "part_id", nullable = false)
-    private Integer partId;
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;
 
-    @Column(name = "part_title", nullable = false, length = 100)
-    private String partTitle;
+    @Column(nullable = false)
+    private String password;
 
-    @Column(name = "question_idx", nullable = false)
-    private Integer questionIdx;
+    @Column(nullable = false, length = 50)
+    private String nickname;
+
+    @Column(name = "target_score")
+    private Integer targetScore;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
