@@ -33,12 +33,19 @@ CREATE TABLE IF NOT EXISTS questions (
 -- ========================================
 -- 3. 사용자 응답 테이블
 -- ========================================
+-- practice_mode 코드:
+-- MOCK    = 모의고사
+-- REAL    = 파트별 연습 - 실전 연습
+-- FREE    = 파트별 연습 - 자유 연습
+-- KOREAN  = 파트별 연습 - 한글 연습
 CREATE TABLE IF NOT EXISTS user_responses (
   response_id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   question_id INT NOT NULL,
+  practice_mode VARCHAR(20) NOT NULL DEFAULT 'REAL' COMMENT '연습 모드 (MOCK/REAL/FREE/KOREAN)',
   audio_file_path VARCHAR(500) DEFAULT NULL COMMENT '녹음 파일 경로',
   stt_text TEXT DEFAULT NULL COMMENT '음성→텍스트 변환 결과',
+  text_answer TEXT DEFAULT NULL COMMENT '텍스트 직접 입력 답변',
   submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   FOREIGN KEY (question_id) REFERENCES questions(question_id) ON DELETE CASCADE

@@ -3,9 +3,14 @@
     <section class="hero card">
       <h1>TOEIC Speaking 연습</h1>
       <p>토익스피킹 시험을 효과적으로 준비하세요.<br/>파트별 연습과 음성 녹음으로 실전처럼 학습할 수 있습니다.</p>
-      <router-link to="/practice">
-        <button class="btn-primary btn-large">연습 시작하기</button>
-      </router-link>
+      <div class="hero-actions">
+        <router-link to="/practice">
+          <button class="btn-primary btn-large">파트별 연습</button>
+        </router-link>
+        <router-link to="/full-test">
+          <button class="btn-primary btn-large btn-test">모의고사 응시</button>
+        </router-link>
+      </div>
     </section>
 
     <section class="stats">
@@ -65,12 +70,24 @@ const store = useSpeakingStore()
   margin-bottom: 24px;
 }
 
+.hero-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 .btn-large {
   padding: 14px 36px;
   font-size: 1.1rem;
   background: #fff;
   color: #4A90D9;
   font-weight: 600;
+}
+
+.btn-test {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  color: #fff;
 }
 
 .stats {

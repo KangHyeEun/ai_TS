@@ -5,6 +5,7 @@
       <div class="nav-links">
         <router-link to="/">홈</router-link>
         <router-link to="/practice">연습하기</router-link>
+        <router-link to="/full-test">모의고사</router-link>
         <router-link to="/my-records">내 기록</router-link>
         <span v-if="store.currentUser" class="user-info">{{ store.currentUser.nickname }}님</span>
       </div>

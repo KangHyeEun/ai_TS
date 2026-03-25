@@ -9,3 +9,7 @@ target/
 .settings/
 .project
 .classpath
+uploads/images/*
+uploads/audio/*
+!uploads/images/.gitkeep
+!uploads/audio/.gitkeep

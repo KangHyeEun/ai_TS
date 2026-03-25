@@ -12,4 +12,6 @@ public class SampleAnswerRequest {
     private String questionText;
     private String info;
     private List<String> subQuestions;
+    private Integer targetScore;
+    private Integer responseTime;
 }
