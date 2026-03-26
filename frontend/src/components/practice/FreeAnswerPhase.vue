@@ -82,16 +82,19 @@
               <h4 class="improved-label">English</h4>
               <p class="improved-en">{{ translationData.improved }}</p>
             </div>
-            <div v-if="translationData.improvedKo" class="improved-section">
+            <div class="improved-section">
               <h4 class="improved-label" style="color:#555">한국어 해석</h4>
-              <p class="improved-ko">{{ translationData.improvedKo }}</p>
+              <p class="improved-ko">{{ translationData.improvedKo || '한국어 해석을 불러올 수 없습니다.' }}</p>
             </div>
           </div>
           <!-- 개선 설명 -->
           <div v-if="activeTransTab === 'explanation'">
-            <div v-if="translationData.improvements && translationData.improvements.length" class="improve-list">
-              <div v-for="(item, i) in translationData.improvements" :key="i" class="improve-detail-item">
-                <div class="improve-detail-header">{{ i + 1 }}. {{ item.reason }}</div>
+            <div v-if="translationData.improvements && translationData.improvements.length">
+              <div v-for="(item, i) in translationData.improvements" :key="i" class="feedback-item improve-item">
+                <div class="feedback-item-header">
+                  <span class="feedback-badge improve">{{ i + 1 }}</span>
+                  <strong>{{ item.reason }}</strong>
+                </div>
                 <div class="feedback-compare">
                   <div class="compare-row before">
                     <span class="compare-label">원래</span>
