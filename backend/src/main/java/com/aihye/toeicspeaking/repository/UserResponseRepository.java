@@ -10,4 +10,6 @@ import java.util.List;
 public interface UserResponseRepository extends JpaRepository<UserResponse, Integer> {
 
     List<UserResponse> findByUserIdOrderBySubmittedAtDesc(Integer userId);
+
+    long countByUserIdAndQuestionId(Integer userId, Integer questionId);
 }

@@ -28,6 +28,9 @@ public class UserResponse {
     @Column(name = "practice_mode", nullable = false, length = 20)
     private String practiceMode;
 
+    @Column(name = "attempt_number", nullable = false)
+    private Integer attemptNumber = 1;
+
     @Column(name = "audio_file_path", length = 500)
     private String audioFilePath;
 

@@ -2,27 +2,108 @@ package com.aihye.toeicspeaking.service;
 
 import com.aihye.toeicspeaking.dto.FeedbackRequest;
 import com.aihye.toeicspeaking.dto.SampleAnswerRequest;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.util.Base64;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+@Slf4j
 @Service
 public class GeminiService {
 
     private final WebClient geminiWebClient;
-    private final String apiKey;
+    private final List<String> apiKeys;
+    private final java.util.concurrent.atomic.AtomicInteger currentKeyIndex = new java.util.concurrent.atomic.AtomicInteger(0);
 
-    public GeminiService(WebClient geminiWebClient,
-                         @Qualifier("geminiApiKey") String apiKey) {
+    // 키별 속도 제한 (무료 티어 10 RPM → 안전 마진 8 RPM per key)
+    private static final int MAX_REQUESTS_PER_MINUTE = 8;
+    private static final long MIN_INTERVAL_MS = 300;
+    private final java.util.concurrent.ConcurrentHashMap<Integer, Deque<Long>> keyTimestamps = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public GeminiService(WebClient geminiWebClient, List<String> geminiApiKeys) {
         this.geminiWebClient = geminiWebClient;
-        this.apiKey = apiKey;
+        this.apiKeys = geminiApiKeys;
+        log.info("Gemini API 키 {}개 등록됨", apiKeys.size());
+    }
+
+    private String getCurrentKey() {
+        int idx = currentKeyIndex.get() % apiKeys.size();
+        return apiKeys.get(idx);
+    }
+
+    private String rotateToNextKey() {
+        int newIdx = currentKeyIndex.incrementAndGet() % apiKeys.size();
+        log.info("API 키 전환: Key #{}", newIdx + 1);
+        return apiKeys.get(newIdx);
+    }
+
+    /**
+     * 현재 키의 슬라이딩 윈도우 속도 제한
+     */
+    private void waitForRateLimit() {
+        int keyIdx = currentKeyIndex.get() % apiKeys.size();
+        Deque<Long> timestamps = keyTimestamps.computeIfAbsent(keyIdx, k -> new ConcurrentLinkedDeque<>());
+
+        long now = System.currentTimeMillis();
+        while (!timestamps.isEmpty() && now - timestamps.peekFirst() > 60_000) {
+            timestamps.pollFirst();
+        }
+
+        // 현재 키가 한도에 도달하면, 다른 키가 있으면 전환
+        if (timestamps.size() >= MAX_REQUESTS_PER_MINUTE) {
+            if (apiKeys.size() > 1) {
+                // 여유 있는 다른 키 찾기
+                for (int i = 1; i < apiKeys.size(); i++) {
+                    int altIdx = (keyIdx + i) % apiKeys.size();
+                    Deque<Long> altTs = keyTimestamps.computeIfAbsent(altIdx, k -> new ConcurrentLinkedDeque<>());
+                    long altNow = System.currentTimeMillis();
+                    while (!altTs.isEmpty() && altNow - altTs.peekFirst() > 60_000) altTs.pollFirst();
+                    if (altTs.size() < MAX_REQUESTS_PER_MINUTE) {
+                        currentKeyIndex.set(altIdx);
+                        log.info("Key #{} RPM 한도 도달, Key #{}로 전환 (사용량 {}/{})",
+                                keyIdx + 1, altIdx + 1, altTs.size(), MAX_REQUESTS_PER_MINUTE);
+                        timestamps = altTs;
+                        break;
+                    }
+                }
+            }
+
+            // 모든 키가 한도면 대기
+            now = System.currentTimeMillis();
+            while (!timestamps.isEmpty() && now - timestamps.peekFirst() > 60_000) timestamps.pollFirst();
+            if (timestamps.size() >= MAX_REQUESTS_PER_MINUTE) {
+                long oldest = timestamps.peekFirst();
+                long waitMs = 60_000 - (now - oldest) + 500;
+                if (waitMs > 0) {
+                    log.info("모든 키 RPM 한도 도달, {}ms 대기 중...", waitMs);
+                    try { Thread.sleep(waitMs); } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    long afterWait = System.currentTimeMillis();
+                    while (!timestamps.isEmpty() && afterWait - timestamps.peekFirst() > 60_000) timestamps.pollFirst();
+                }
+            }
+        }
+
+        // 연속 요청 간 최소 간격
+        if (!timestamps.isEmpty()) {
+            long elapsed = System.currentTimeMillis() - timestamps.peekLast();
+            if (elapsed < MIN_INTERVAL_MS) {
+                try { Thread.sleep(MIN_INTERVAL_MS - elapsed); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        timestamps.addLast(System.currentTimeMillis());
     }
 
     public String generateQuestion(int partNumber) {
@@ -259,27 +340,50 @@ public class GeminiService {
         return callGeminiApi(prompt);
     }
 
-    public String translateKoreanToEnglish(String koreanText, String questionText, int partId) {
+    public String translateKoreanToEnglish(String koreanText, String questionText, int partId, int targetScore, int responseTime) {
+        String levelGuide = getLevelGuide(targetScore);
+        String timeGuide = getTimeGuide(responseTime);
+
         String prompt = String.format("""
             You are a TOEIC Speaking expert translator and tutor.
 
             The student answered a TOEIC Speaking Part %d question in Korean.
-            Translate their Korean answer into natural, fluent English suitable for TOEIC Speaking.
+            Target score: %d/200
+            Response time limit: %d seconds
+
+            %s
+            %s
 
             Question: %s
             Student's Korean answer: %s
 
-            Please provide:
+            Respond ONLY in valid JSON (no markdown, no code blocks).
 
-            ## 영어 번역
-            (Natural English translation of the student's answer, suitable for TOEIC Speaking)
+            {
+              "questionKo": "(문제의 한국어 번역)",
+              "questionKeyWords": [
+                {"word": "(영어 단어/표현)", "meaning": "(한국어 뜻)", "example": "(예문)"}
+              ],
+              "translation": "(학생의 한글 답변을 자연스러운 TOEIC Speaking 영어로 번역)",
+              "improved": "(목표 %d점 수준에 맞는 개선된 영어 답변, %d초 내 발화 가능한 분량)",
+              "improvedKo": "(개선된 영어 답변의 한국어 번역)",
+              "improvements": [
+                {"before": "(학생 번역의 원래 표현)", "after": "(개선된 표현)", "reason": "(한국어로 개선 이유 설명)"}
+              ],
+              "keyExpressions": [
+                {"expression": "(영어 표현)", "meaning": "(한국어 뜻)", "example": "(예문)"}
+              ]
+            }
 
-            ## 표현 개선
-            (If the student's idea can be expressed better, provide an improved English version with explanation in Korean)
-
-            ## 핵심 영어 표현
-            (List 3-5 key English expressions used in the translation, with Korean explanation)
-            """, partId, questionText, koreanText);
+            Requirements:
+            - questionKeyWords: 3-5 key English words/phrases from the question
+            - translation: faithful translation of the student's Korean answer
+            - improved: MUST match target score %d level AND be speakable within %d seconds (~150 words/min)
+            - improvedKo: Korean translation of the improved version
+            - improvements: 2-4 specific changes, each with before/after/reason
+            - keyExpressions: 3-5 useful expressions from the improved answer
+            """, partId, targetScore, responseTime, levelGuide, timeGuide,
+                questionText, koreanText, targetScore, responseTime, targetScore, responseTime);
 
         return callGeminiApi(prompt);
     }
@@ -288,83 +392,130 @@ public class GeminiService {
         int target = request.getTargetScore() != null ? request.getTargetScore() : 130;
         int respTime = request.getResponseTime() != null ? request.getResponseTime() : 30;
         String levelGuide = getLevelGuide(target);
-        String timeGuide = getTimeGuide(respTime);
+        boolean hasSubQuestions = request.getSubQuestions() != null && !request.getSubQuestions().isEmpty();
 
-        String prompt = String.format("""
-            You are a TOEIC Speaking expert tutor evaluating a student's response.
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are a strict TOEIC Speaking evaluator.\n\n");
 
-            TOEIC Speaking Part %d
-            Question: %s
-            Student's answer: %s
+        // 질문 및 답변
+        sb.append("=== QUESTION ===\n");
+        sb.append("TOEIC Speaking Part ").append(request.getPartId()).append("\n");
 
-            The student's target score is %d out of 200.
-            The response time limit is %d seconds.
-            %s
-            %s
+        if (hasSubQuestions) {
+            sb.append("This is a SET-type question with ").append(request.getSubQuestions().size()).append(" sub-questions.\n\n");
+            if (request.getInfo() != null) {
+                sb.append("Provided information:\n").append(request.getInfo()).append("\n\n");
+            }
+            for (int i = 0; i < request.getSubQuestions().size(); i++) {
+                var sq = request.getSubQuestions().get(i);
+                sb.append("Q").append(i + 1).append(": ").append(sq.getQuestion()).append("\n");
+                sb.append("  Response time: ").append(sq.getResponseTime()).append(" seconds\n");
+                sb.append("  Student's answer: \"").append(sq.getAnswer() != null ? sq.getAnswer() : "").append("\"\n\n");
+            }
+        } else {
+            sb.append(request.getQuestionText()).append("\n\n");
+            sb.append("=== STUDENT'S ACTUAL ANSWER (VERBATIM) ===\n");
+            sb.append("\"").append(request.getUserAnswer()).append("\"\n\n");
+        }
 
-            Please evaluate based on the student's target score and provide feedback in Korean:
+        // 규칙
+        sb.append("=== STRICT RULES ===\n");
+        sb.append("1. ONLY analyze the EXACT text the student wrote. NEVER fabricate or invent answers.\n");
+        sb.append("2. 'quote' and 'studentSaid' fields MUST be EXACT copy-paste from the student's answer.\n");
+        sb.append("3. If an answer is empty, gibberish, non-English, or too short: score 0-10, strengths=[], explain insufficiency.\n");
+        sb.append("4. '(답변 없음)' means no answer was given.\n\n");
 
-            ## 현재 예상 점수
-            (Estimate the current TOEIC Speaking score for this response, out of 200)
+        sb.append("Target score: ").append(target).append("/200\n");
+        sb.append(levelGuide).append("\n\n");
 
-            ## 목표 점수(%d점) 대비 분석
-            (How close is this response to the target score? What's missing?)
+        if (request.getPartId() == 2) {
+            sb.append("For Part 2: [Scene Description] in the question is ground truth for the image.\n\n");
+        }
 
-            ## 잘한 점
-            (What the student did well - be specific)
+        // JSON 구조
+        sb.append("Respond ONLY in valid JSON (no markdown, no code blocks). All text in Korean except English quotes/answers.\n\n");
+        sb.append("{\n");
+        sb.append("  \"estimatedScore\": (number 0-200),\n");
+        sb.append("  \"scoreComment\": \"(1-2 sentence score explanation in Korean)\",\n");
+        sb.append("  \"targetAnalysis\": \"(gap analysis vs target ").append(target).append(" score, 2-3 sentences in Korean)\",\n");
+        sb.append("  \"targetTips\": [\"(tip 1 in Korean)\", \"(tip 2)\", \"(tip 3)\"],\n");
+        sb.append("  \"strengths\": [\n");
+        sb.append("    {\"point\": \"(title)\", \"detail\": \"(Korean)\", \"quote\": \"(EXACT from student's answer or \\\"\\\")\"}\n");
+        sb.append("  ],\n");
+        sb.append("  \"improvements\": [\n");
+        sb.append("    {\"point\": \"(title)\", \"detail\": \"(Korean)\", \"studentSaid\": \"(EXACT from student's answer or \\\"\\\")\", \"betterWay\": \"(improved English)\"}\n");
+        sb.append("  ],\n");
 
-            ## 개선할 점
-            (Specific areas to improve to reach the target score, with actionable advice)
+        if (hasSubQuestions) {
+            sb.append("  \"correctedAnswers\": [\n");
+            for (int i = 0; i < request.getSubQuestions().size(); i++) {
+                var sq = request.getSubQuestions().get(i);
+                int sqTime = sq.getResponseTime() != null ? sq.getResponseTime() : respTime;
+                sb.append("    {\"question\": \"(Q").append(i + 1).append(" question text)\", ");
+                sb.append("\"answer\": \"(model English answer within ").append(sqTime).append("s)\", ");
+                sb.append("\"answerKo\": \"(Korean translation)\", ");
+                sb.append("\"responseTime\": ").append(sqTime).append("}");
+                if (i < request.getSubQuestions().size() - 1) sb.append(",");
+                sb.append("\n");
+            }
+            sb.append("  ],\n");
+        } else {
+            sb.append("  \"correctedAnswers\": [\n");
+            sb.append("    {\"question\": \"(the question)\", \"answer\": \"(model English answer within ").append(respTime).append("s)\", \"answerKo\": \"(Korean translation)\", \"responseTime\": ").append(respTime).append("}\n");
+            sb.append("  ],\n");
+        }
 
-            ## 수정된 답변 (목표 %d점 / 응답시간 %d초)
-            (Corrected/improved version that can be spoken within %d seconds, matching the target score level, in English)
+        sb.append("  \"keyExpressions\": [\n");
+        sb.append("    {\"expression\": \"(English)\", \"meaning\": \"(Korean)\", \"example\": \"(example sentence)\"}\n");
+        sb.append("  ]\n");
+        sb.append("}\n\n");
 
-            ## 핵심 표현 학습
-            (3-5 key expressions from the improved answer, with Korean explanation)
+        sb.append("REQUIREMENTS:\n");
+        sb.append("- targetTips: 3-4 actionable tips for reaching target score ").append(target).append("\n");
+        sb.append("- strengths: 2-3 items (or [] if answer is insufficient)\n");
+        sb.append("- improvements: 2-3 items with what student said vs better way\n");
+        if (hasSubQuestions) {
+            sb.append("- correctedAnswers: EXACTLY ").append(request.getSubQuestions().size()).append(" items, one per sub-question\n");
+            sb.append("- Each answer MUST fit within its own responseTime at normal speaking pace (~150 words/min)\n");
+        } else {
+            sb.append("- correctedAnswers: 1 item, must fit within ").append(respTime).append(" seconds\n");
+        }
+        sb.append("- keyExpressions: 3-5 useful expressions from the corrected answers\n");
 
-            Keep the feedback encouraging, constructive, and focused on reaching the target score.
-            The corrected answer MUST be speakable within %d seconds at normal speaking pace.
-            """, request.getPartId(), request.getQuestionText(), request.getUserAnswer(),
-                target, respTime, levelGuide, timeGuide, target, target, respTime, respTime, respTime);
-
-        return callGeminiApi(prompt);
+        return callGeminiApi(sb.toString());
     }
 
     /**
-     * Imagen 3 API로 이미지 생성 후 Base64 바이트 배열 반환
+     * 장면 설명에서 카테고리를 추출하여 매칭되는 Pexels 이미지 URL 반환
      */
-    public byte[] generateImage(String sceneDescription) {
-        String prompt = String.format(
-            "A realistic photograph for TOEIC Speaking Part 2 picture description practice. " +
-            "The scene shows: %s. " +
-            "The image should be clear, well-lit, and show people doing everyday activities. " +
-            "Photorealistic style, no text or watermarks.", sceneDescription);
+    public String getImageUrl(String sceneDescription) {
+        String desc = sceneDescription.toLowerCase();
 
-        WebClient imagenClient = WebClient.builder()
-                .baseUrl("https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002")
-                .build();
-
-        Map<String, Object> requestBody = Map.of(
-            "instances", List.of(Map.of("prompt", prompt)),
-            "parameters", Map.of(
-                "sampleCount", 1,
-                "aspectRatio", "16:9"
-            )
-        );
-
-        Map response = imagenClient.post()
-                .uri(uriBuilder -> uriBuilder
-                        .path(":predict")
-                        .queryParam("key", apiKey)
-                        .build())
-                .bodyValue(requestBody)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .block();
-
-        List<Map> predictions = (List<Map>) response.get("predictions");
-        String base64Image = (String) predictions.get(0).get("bytesBase64Encoded");
-        return Base64.getDecoder().decode(base64Image);
+        // TOEIC Part 2 빈출 장면별 Pexels 무료 이미지 (직접 링크)
+        if (desc.contains("office") || desc.contains("meeting") || desc.contains("desk") || desc.contains("cowork")) {
+            return "https://images.pexels.com/photos/3184292/pexels-photo-3184292.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("cafe") || desc.contains("coffee") || desc.contains("restaurant") || desc.contains("dining")) {
+            return "https://images.pexels.com/photos/1537635/pexels-photo-1537635.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("park") || desc.contains("outdoor") || desc.contains("garden")) {
+            return "https://images.pexels.com/photos/1164572/pexels-photo-1164572.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("market") || desc.contains("shop") || desc.contains("store") || desc.contains("mall")) {
+            return "https://images.pexels.com/photos/3965548/pexels-photo-3965548.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("airport") || desc.contains("station") || desc.contains("bus") || desc.contains("train")) {
+            return "https://images.pexels.com/photos/2381463/pexels-photo-2381463.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("library") || desc.contains("study") || desc.contains("school") || desc.contains("campus")) {
+            return "https://images.pexels.com/photos/1438072/pexels-photo-1438072.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("construction") || desc.contains("build")) {
+            return "https://images.pexels.com/photos/2219024/pexels-photo-2219024.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("hospital") || desc.contains("doctor") || desc.contains("medical")) {
+            return "https://images.pexels.com/photos/4021775/pexels-photo-4021775.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("gym") || desc.contains("sport") || desc.contains("exercise") || desc.contains("fitness")) {
+            return "https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else if (desc.contains("kitchen") || desc.contains("cook")) {
+            return "https://images.pexels.com/photos/2544829/pexels-photo-2544829.jpeg?auto=compress&cs=tinysrgb&w=800";
+        } else {
+            // 기본: 사무실 사진
+            return "https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=800";
+        }
     }
 
     private String callGeminiApi(String prompt) {
@@ -376,20 +527,50 @@ public class GeminiService {
             )
         );
 
-        Map response = geminiWebClient.post()
-                .uri(uriBuilder -> uriBuilder
-                        .path(":generateContent")
-                        .queryParam("key", apiKey)
-                        .build())
-                .bodyValue(requestBody)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .block();
+        int maxRetries = apiKeys.size() * 3; // 키 수 × 3회
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            waitForRateLimit();
+            String key = getCurrentKey();
 
-        // 응답에서 텍스트 추출
-        List<Map> candidates = (List<Map>) response.get("candidates");
-        Map content = (Map) candidates.get(0).get("content");
-        List<Map> parts = (List<Map>) content.get("parts");
-        return (String) parts.get(0).get("text");
+            try {
+                Map response = geminiWebClient.post()
+                        .uri(uriBuilder -> uriBuilder
+                                .path(":generateContent")
+                                .queryParam("key", key)
+                                .build())
+                        .bodyValue(requestBody)
+                        .retrieve()
+                        .bodyToMono(Map.class)
+                        .block();
+
+                List<Map> candidates = (List<Map>) response.get("candidates");
+                Map content = (Map) candidates.get(0).get("content");
+                List<Map> parts = (List<Map>) content.get("parts");
+                return (String) parts.get(0).get("text");
+
+            } catch (WebClientResponseException.TooManyRequests e) {
+                log.warn("Gemini API 429 (Key #{}, 시도 {}/{})",
+                        currentKeyIndex.get() % apiKeys.size() + 1, attempt, maxRetries);
+
+                // 다른 키가 있으면 즉시 전환
+                if (apiKeys.size() > 1) {
+                    rotateToNextKey();
+                } else {
+                    // 키가 1개면 30초 대기
+                    long waitSeconds = Math.min(attempt * 30L, 180L);
+                    log.info("{}초 후 재시도...", waitSeconds);
+                    try { Thread.sleep(waitSeconds * 1000L); }
+                    catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("재시도 중 인터럽트 발생", ie);
+                    }
+                }
+
+                if (attempt == maxRetries) {
+                    throw new RuntimeException("API 요청 한도 초과. 잠시 후 다시 시도해주세요.", e);
+                }
+            }
+        }
+        throw new RuntimeException("API 호출 실패");
     }
 }

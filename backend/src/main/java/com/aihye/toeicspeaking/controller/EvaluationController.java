@@ -1,0 +1,52 @@
+package com.aihye.toeicspeaking.controller;
+
+import com.aihye.toeicspeaking.entity.Evaluation;
+import com.aihye.toeicspeaking.service.EvaluationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/evaluations")
+@RequiredArgsConstructor
+public class EvaluationController {
+
+    private final EvaluationService evaluationService;
+
+    @PostMapping
+    public ResponseEntity<?> saveEvaluation(@RequestBody Map<String, Object> request) {
+        try {
+            Integer responseId = (Integer) request.get("responseId");
+            Integer score = request.get("score") != null ? (Integer) request.get("score") : null;
+            String strengthsText = (String) request.get("strengthsText");
+            String feedbackText = (String) request.get("feedbackText");
+            String grammarCorrections = (String) request.get("grammarCorrections");
+
+            Evaluation saved = evaluationService.saveEvaluation(responseId, score, strengthsText, feedbackText, grammarCorrections);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                "evaluationId", saved.getEvaluationId(),
+                "message", "평가 저장 완료"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "평가 저장 실패: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/response/{responseId}")
+    public List<Evaluation> getByResponseId(@PathVariable Integer responseId) {
+        return evaluationService.getEvaluationsByResponseId(responseId);
+    }
+
+    @GetMapping("/response/{responseId}/latest")
+    public ResponseEntity<?> getLatest(@PathVariable Integer responseId) {
+        return evaluationService.getLatestEvaluation(responseId)
+                .map(e -> ResponseEntity.ok((Object) e))
+                .orElse(ResponseEntity.noContent().build());
+    }
+}

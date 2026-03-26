@@ -155,9 +155,11 @@ export const useSpeakingStore = defineStore('speaking', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId: currentUser.value?.userId || 1,
+          questionId: record.questionId || null,
           partId: record.partId,
           partTitle: record.partTitle,
-          questionIdx: record.questionIdx
+          practiceMode: record.practiceMode || 'REAL'
         })
       })
       await fetchRecords()
@@ -168,8 +170,15 @@ export const useSpeakingStore = defineStore('speaking', () => {
 
   async function clearRecords() {
     try {
-      await fetch('/api/records', { method: 'DELETE' })
-      records.value = []
+      const res = await fetch('/api/records', { method: 'DELETE' })
+      if (res.ok) {
+        records.value = []
+        // 학습 통계도 리셋
+        todayStats.value = { completedQuestionsCount: 0, averageScore: 0 }
+        weeklyStats.value = []
+      } else {
+        console.error('기록 삭제 실패:', res.status)
+      }
     } catch (err) {
       console.error('기록 삭제 실패:', err)
     }
@@ -191,6 +200,8 @@ export const useSpeakingStore = defineStore('speaking', () => {
         })
       })
       const data = await res.json()
+      // 학습 통계 업데이트 (문제 완료 수 증가)
+      incrementStudyStats()
       return data.responseId
     } catch (err) {
       console.error('응답 저장 실패:', err)
@@ -198,9 +209,105 @@ export const useSpeakingStore = defineStore('speaking', () => {
     }
   }
 
-  // 앱 시작 시 사용자 정보 + 기록 로드
-  fetchCurrentUser()
+  // ========== Evaluation (AI 평가 저장) ==========
+  async function saveEvaluation({ responseId, score, strengthsText, feedbackText, grammarCorrections }) {
+    try {
+      const res = await fetch('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responseId, score, strengthsText, feedbackText, grammarCorrections })
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      if (score != null) {
+        updateStudyScore(score)
+      }
+      return data.evaluationId
+    } catch (err) {
+      console.error('평가 저장 실패:', err)
+      return null
+    }
+  }
+
+  async function getEvaluationsByResponse(responseId) {
+    try {
+      const res = await fetch(`/api/evaluations/response/${responseId}`)
+      if (!res.ok) return []
+      return await res.json()
+    } catch (err) {
+      console.error('평가 조회 실패:', err)
+      return []
+    }
+  }
+
+  // ========== StudyStats (학습 통계) ==========
+  const todayStats = ref({ completedQuestionsCount: 0, averageScore: 0 })
+  const weeklyStats = ref([])
+
+  async function fetchTodayStats() {
+    try {
+      const userId = currentUser.value?.userId || 1
+      const res = await fetch(`/api/stats/${userId}/today`)
+      if (!res.ok) return
+      todayStats.value = await res.json()
+    } catch (err) {
+      console.error('오늘 통계 조회 실패:', err)
+    }
+  }
+
+  async function fetchWeeklyStats() {
+    try {
+      const userId = currentUser.value?.userId || 1
+      const end = new Date()
+      const start = new Date()
+      start.setDate(start.getDate() - 6)
+      const startStr = start.toISOString().split('T')[0]
+      const endStr = end.toISOString().split('T')[0]
+      const res = await fetch(`/api/stats/${userId}/range?startDate=${startStr}&endDate=${endStr}`)
+      if (!res.ok) return
+      weeklyStats.value = await res.json()
+    } catch (err) {
+      console.error('주간 통계 조회 실패:', err)
+    }
+  }
+
+  async function incrementStudyStats() {
+    try {
+      const userId = currentUser.value?.userId || 1
+      const res = await fetch(`/api/stats/${userId}/increment`, { method: 'POST' })
+      if (res.ok) await fetchTodayStats()
+    } catch (err) {
+      console.error('통계 증가 실패:', err)
+    }
+  }
+
+  async function updateStudyScore(score) {
+    try {
+      const userId = currentUser.value?.userId || 1
+      const res = await fetch(`/api/stats/${userId}/score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score })
+      })
+      if (res.ok) await fetchTodayStats()
+    } catch (err) {
+      console.error('점수 업데이트 실패:', err)
+    }
+  }
+
+  // 앱 시작 시 사용자 정보 + 기록 + 통계 로드
+  fetchCurrentUser().then(() => {
+    fetchTodayStats()
+    fetchWeeklyStats()
+  })
   fetchRecords()
 
-  return { parts, currentUser, records, totalPracticeCount, todayPracticeCount, fetchCurrentUser, fetchRecords, addRecord, clearRecords, saveUserResponse }
+  return {
+    parts, currentUser, records,
+    totalPracticeCount, todayPracticeCount,
+    todayStats, weeklyStats,
+    fetchCurrentUser, fetchRecords, addRecord, clearRecords, saveUserResponse,
+    saveEvaluation, getEvaluationsByResponse,
+    fetchTodayStats, fetchWeeklyStats, incrementStudyStats, updateStudyScore
+  }
 })

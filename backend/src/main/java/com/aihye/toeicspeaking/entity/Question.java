@@ -37,4 +37,10 @@ public class Question {
 
     @Column(name = "response_time", nullable = false)
     private Integer responseTime;
+
+    @Column(name = "is_set", nullable = false)
+    private Boolean isSet = false;
+
+    @Column(name = "set_order")
+    private Integer setOrder;
 }

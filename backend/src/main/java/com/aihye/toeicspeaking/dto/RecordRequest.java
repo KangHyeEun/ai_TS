@@ -6,7 +6,9 @@ import lombok.Setter;
 @Getter
 @Setter
 public class RecordRequest {
+    private Integer userId;
+    private Integer questionId;
     private Integer partId;
     private String partTitle;
-    private Integer questionIdx;
+    private String practiceMode;
 }

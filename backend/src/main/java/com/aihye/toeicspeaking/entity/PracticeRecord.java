@@ -18,14 +18,20 @@ public class PracticeRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Column(name = "user_id", nullable = false)
+    private Integer userId;
+
+    @Column(name = "question_id")
+    private Integer questionId;
+
     @Column(name = "part_id", nullable = false)
     private Integer partId;
 
     @Column(name = "part_title", nullable = false, length = 100)
     private String partTitle;
 
-    @Column(name = "question_idx", nullable = false)
-    private Integer questionIdx;
+    @Column(name = "practice_mode", nullable = false, length = 20)
+    private String practiceMode;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

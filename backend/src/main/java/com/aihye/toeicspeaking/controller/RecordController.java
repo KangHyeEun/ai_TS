@@ -23,6 +23,16 @@ public class RecordController {
         return recordService.getAllRecords();
     }
 
+    @GetMapping("/{userId}")
+    public List<PracticeRecord> getByUser(@PathVariable Integer userId) {
+        return recordService.getRecordsByUserId(userId);
+    }
+
+    @GetMapping("/{userId}/detail")
+    public List<Map<String, Object>> getWithDetail(@PathVariable Integer userId) {
+        return recordService.getRecordsWithDetail(userId);
+    }
+
     @PostMapping
     public ResponseEntity<Map<String, Integer>> create(@RequestBody RecordRequest request) {
         PracticeRecord record = recordService.createRecord(request);

@@ -5,11 +5,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Configuration
 public class GeminiConfig {
 
-    @Value("${gemini.api.key}")
-    private String apiKey;
+    @Value("${gemini.api.keys}")
+    private String apiKeys;
 
     @Value("${gemini.api.model}")
     private String model;
@@ -24,7 +28,10 @@ public class GeminiConfig {
     }
 
     @Bean
-    public String geminiApiKey() {
-        return apiKey;
+    public List<String> geminiApiKeys() {
+        return Arrays.stream(apiKeys.split(","))
+                .map(String::trim)
+                .filter(k -> !k.isEmpty())
+                .collect(Collectors.toList());
     }
 }

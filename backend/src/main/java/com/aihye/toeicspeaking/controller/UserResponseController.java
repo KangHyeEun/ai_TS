@@ -43,4 +43,9 @@ public class UserResponseController {
     public List<UserResponse> getUserResponses(@PathVariable Integer userId) {
         return userResponseService.getUserResponses(userId);
     }
+
+    @GetMapping("/{userId}/detail")
+    public List<Map<String, Object>> getUserResponsesWithDetail(@PathVariable Integer userId) {
+        return userResponseService.getUserResponsesWithDetail(userId);
+    }
 }
