@@ -67,6 +67,7 @@
         :practiceMode="practiceMode"
         :currentQuestion="currentQuestion"
         :isSetPart="isSetPart"
+        :sttText="recorder.sttText.value"
         :setQuestionsCount="currentSetQuestions.length"
         :subQuestionIdx="subQuestionIdx"
         :partId="currentPart.id"
@@ -238,45 +239,43 @@ const timerPercent = computed(() => {
 function parseServerQuestion(data) {
   const partId = currentPart.value.id
 
-  if (partId === 3 && data.subQuestions) {
-    // subQuestions에 이미 3개가 있으면 text를 포함하지 않음 (중복 방지)
+  if ((partId === 3 || partId === 4) && data.subQuestions) {
     const subs = (data.subQuestions || [])
+    // subQuestion이 문자열이면 객체로 변환, 객체면 그대로 사용
+    const parseSub = (sq, i, arr) => {
+      if (typeof sq === 'object' && sq.text) {
+        return { text: sq.text, prepTime: 3, responseTime: sq.responseTime || (i === arr.length - 1 ? 30 : 15) }
+      }
+      return { text: sq, prepTime: 3, responseTime: i === arr.length - 1 ? 30 : 15 }
+    }
+    // subQuestions에 3개가 있으면 그대로, 부족하면 text를 Q1으로 추가
     let allSubs
     if (subs.length >= 3) {
-      // Gemini가 3개 모두 subQuestions에 넣은 경우
-      allSubs = subs.map((sq, i, arr) => ({
-        text: sq, prepTime: 3, responseTime: i === arr.length - 1 ? 30 : 15
-      }))
-    } else {
-      // text가 첫 질문이고 subQuestions가 나머지인 경우
+      allSubs = subs.map(parseSub)
+    } else if (data.text && subs.length > 0) {
       allSubs = [
         { text: data.text, prepTime: 3, responseTime: 15 },
-        ...subs.map((sq, i, arr) => ({
-          text: sq, prepTime: 3, responseTime: i === arr.length - 1 ? 30 : 15
-        }))
+        ...subs.map(parseSub)
       ]
+    } else {
+      allSubs = subs.map(parseSub)
     }
-    // 최대 3개로 제한
-    if (allSubs.length > 3) allSubs = allSubs.slice(0, 3)
-    return {
+    // 정확히 3개로 제한
+    allSubs = allSubs.slice(0, 3)
+    const result = {
       id: 'srv-' + data.questionId,
       questionId: data.questionId,
       setTitle: data.source === 'db' ? 'DB 문제' : 'AI 생성',
       subQuestions: allSubs
     }
-  } else if (partId === 4 && data.subQuestions) {
-    return {
-      id: 'srv-' + data.questionId,
-      questionId: data.questionId,
-      setTitle: data.source === 'db' ? 'DB 문제' : 'AI 생성',
-      info: data.info,
-      infoTitle: data.infoTitle || null,
-      infoDetails: data.infoDetails ? data.infoDetails.replace(/\\n/g, '\n') : null,
-      infoSchedule: data.infoSchedule || null,
-      subQuestions: (data.subQuestions || []).map((sq, i, arr) => ({
-        text: sq, prepTime: 3, responseTime: i === arr.length - 1 ? 30 : 15
-      }))
+    // Part 4: 정보 활용 추가 필드
+    if (partId === 4) {
+      result.info = data.info || null
+      result.infoTitle = data.infoTitle || null
+      result.infoDetails = data.infoDetails ? data.infoDetails.replace(/\\n/g, '\n') : null
+      result.infoSchedule = data.infoSchedule || null
     }
+    return result
   } else {
     return {
       id: 'srv-' + data.questionId,
@@ -311,31 +310,24 @@ function startWithFallback() {
 // 문제를 DB에 저장 (비동기, 실패해도 무시)
 async function saveQuestionToDb(partNumber, questionData) {
   try {
-    // 세트형: subQuestions 포함한 content 구성
-    const content = {}
+    const typeMap = { 1: '지문 읽기', 2: '사진 묘사', 3: '질문 응답', 4: '정보 활용', 5: '의견 제시' }
+    const content = { questionType: typeMap[partNumber] || '기타' }
+
     if (questionData.text) content.text = questionData.text
     if (questionData.hint) content.hint = questionData.hint
-    if (questionData.setTitle) content.questionType = questionData.setTitle
+
+    // 세트형: subQuestions를 객체 배열로 저장 (표준 형식)
     if (questionData.subQuestions) {
-      content.questionType = partNumber === 3 ? '질문 응답' : '정보 활용'
-      content.subQuestions = questionData.subQuestions.map(sq =>
-        typeof sq === 'string' ? sq : sq.text
-      )
-      if (questionData.text) content.text = questionData.text
-      else if (questionData.subQuestions[0]) {
-        content.text = typeof questionData.subQuestions[0] === 'string'
-          ? questionData.subQuestions[0]
-          : questionData.subQuestions[0].text
-      }
+      content.subQuestions = questionData.subQuestions.map(sq => {
+        if (typeof sq === 'object' && sq.text) {
+          return { text: sq.text, responseTime: sq.responseTime || 15 }
+        }
+        return { text: sq, responseTime: 15 }
+      })
     }
     if (questionData.infoTitle) content.infoTitle = questionData.infoTitle
     if (questionData.infoDetails) content.infoDetails = questionData.infoDetails
     if (questionData.infoSchedule) content.infoSchedule = questionData.infoSchedule
-
-    if (!content.questionType) {
-      const typeMap = { 1: '지문 읽기', 2: '사진 묘사', 3: '질문 응답', 4: '정보 활용', 5: '의견 제시' }
-      content.questionType = typeMap[partNumber] || '기타'
-    }
 
     const res = await fetch('/api/gemini/save-question', {
       method: 'POST',
@@ -513,6 +505,14 @@ function finishFreeAnswer() {
       sttText: recorder.sttText.value || freeTextAnswer.value || '',
       text: currentQuestion.value?.text || ''
     }
+    // 세트 문항이 남아있으면 다음 문항으로 이동
+    if (subQuestionIdx.value < currentSetQuestions.value.length - 1) {
+      subQuestionIdx.value++
+      freeTextAnswer.value = ''
+      recorder.resetRecording()
+      phase.value = 'free-answer'
+      return
+    }
   }
   phase.value = 'done'
   if (currentPart.value.id === 1) {
@@ -532,7 +532,6 @@ function finishFreeAnswer() {
     textAnswer: null
   }).then(responseId => {
     if (responseId) ai.setResponseId(responseId)
-    // responseId 설정 후 자동 피드백 요청
     autoRequestFeedback()
   })
 }

@@ -40,6 +40,10 @@
           <span class="rec-dot"></span>
           <span>녹음 중... {{ freeRecordTime }}초</span>
         </div>
+        <div v-if="sttText" class="stt-result" style="margin-top:12px; padding:12px; background:#f0f4ff; border-radius:8px; border-left:3px solid #4a90d9;">
+          <div style="font-size:12px; color:#666; margin-bottom:4px;">음성 인식 결과</div>
+          <p style="margin:0; font-size:15px; line-height:1.6; color:#333;">{{ sttText }}</p>
+        </div>
         <div v-if="!freeRecording && audioUrl" class="playback" style="margin-top:16px">
           <h4>녹음 결과</h4>
           <audio :src="audioUrl" controls></audio>
@@ -148,6 +152,7 @@ defineProps({
   setQuestionsCount: Number,
   subQuestionIdx: Number,
   partId: Number,
+  sttText: String,
   freeRecording: Boolean,
   freeRecordTime: Number,
   audioUrl: String,

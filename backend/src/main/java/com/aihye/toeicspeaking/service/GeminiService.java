@@ -169,7 +169,7 @@ public class GeminiService {
               - Technology: AI in education, social media regulation, screen time limits
               - Environment: plastic ban, public transport incentives, renewable energy
               - Society: volunteer requirements, retirement age, public space usage
-            Requirements: Clear position statement + 2 supporting reasons with examples.
+            Requirements: The question itself must be SHORT (2-3 sentences max, under 40 words). Just state the topic and ask for opinion. Do NOT add lengthy context or background explanations in the question.
             Recent trends: AI impact on jobs, 4-day work week, digital detox, sustainable living.
 
             ============================================================
@@ -184,14 +184,15 @@ public class GeminiService {
             {"text": "Describe the picture below.", "hint": "detailed scene description with 3+ people, their actions, locations, and background details", "questionType": "사진 묘사"}
 
             For Part 3:
-            {"text": "first question (simpler)", "questionType": "질문 응답", "subQuestions": ["second question (simpler)", "third question (requires longer answer with reasons)"]}
+            {"questionType": "질문 응답", "subQuestions": [{"text": "Q5 simple question", "responseTime": 15}, {"text": "Q6 simple question", "responseTime": 15}, {"text": "Q7 longer opinion question with reasons", "responseTime": 30}]}
+            IMPORTANT for Part 3: subQuestions must have EXACTLY 3 items. Each item must be an object with "text" and "responseTime" fields. Q5-Q6 have responseTime 15, Q7 has responseTime 30.
 
             For Part 4:
-            {"text": "main instruction", "infoTitle": "event/seminar title", "infoDetails": "date and location info, one item per line (e.g. Monday, November 16\\nEdison Community Center\\nRegistration fee: 25$)", "infoSchedule": [{"time": "9:00-10:00 A.M.", "content": "Welcome speech", "speaker": "Tom Rodriguez"}, {"time": "10:00-11:00 A.M.", "content": "Lecture: nutritional supplements", "speaker": "Jane Smith"}], "questionType": "정보 활용", "subQuestions": ["Q8: factual question", "Q9: factual question", "Q10: caller states wrong info, correct it"]}
-            IMPORTANT for Part 4: infoSchedule must have at least 5 entries. Each entry must have time, content, speaker fields. Use "-" for speaker if none. Content should use bold-style prefixes like "Lecture:", "Presentation:", "Group discussion:", "Workshop:", "Lunch" etc.
+            {"questionType": "정보 활용", "infoTitle": "event/seminar title", "infoDetails": "date and location info, one item per line (e.g. Monday, November 16\\nEdison Community Center\\nRegistration fee: 25$)", "infoSchedule": [{"time": "9:00-10:00 A.M.", "content": "Welcome speech", "speaker": "Tom Rodriguez"}, {"time": "10:00-11:00 A.M.", "content": "Lecture: nutritional supplements", "speaker": "Jane Smith"}], "subQuestions": [{"text": "Q8 factual question", "responseTime": 15}, {"text": "Q9 factual question", "responseTime": 15}, {"text": "Q10 caller states wrong info, correct it", "responseTime": 30}]}
+            IMPORTANT for Part 4: infoSchedule must have at least 5 entries. Each entry must have time, content, speaker fields. Use "-" for speaker if none. Content should use bold-style prefixes like "Lecture:", "Presentation:", "Group discussion:", "Workshop:", "Lunch" etc. subQuestions must have EXACTLY 3 items as objects with "text" and "responseTime" fields.
 
             For Part 5:
-            {"text": "the opinion question with full context and instructions", "questionType": "의견 제시"}
+            {"text": "short opinion question (2-3 sentences, under 40 words). Example: 'Do you agree or disagree that companies should allow employees to work from home? Give specific reasons to support your opinion.'", "questionType": "의견 제시"}
 
             Generate for Part %d now.
             """, partNumber, partNumber);

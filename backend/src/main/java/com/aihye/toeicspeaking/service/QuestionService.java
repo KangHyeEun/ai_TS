@@ -8,7 +8,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -23,6 +26,7 @@ public class QuestionService {
     private final RecordRepository recordRepository;
     private final GeminiService geminiService;
     private final ObjectMapper objectMapper;
+    private final PlatformTransactionManager transactionManager;
 
     @Value("${upload.path}")
     private String uploadPath;
@@ -113,6 +117,28 @@ public class QuestionService {
 
         Map<String, Object> generated = new HashMap<>(objectMapper.readValue(jsonText, Map.class));
 
+        // Part 3/4: subQuestions가 있으면 text 필드 제거 (중복 방지)
+        if ((partNumber == 3 || partNumber == 4) && generated.containsKey("subQuestions")) {
+            generated.remove("text");
+            // subQuestions 정규화: 문자열 배열 → 객체 배열로 변환
+            List<?> subs = (List<?>) generated.get("subQuestions");
+            List<Map<String, Object>> normalizedSubs = new ArrayList<>();
+            for (int i = 0; i < subs.size(); i++) {
+                Object sub = subs.get(i);
+                if (sub instanceof String) {
+                    Map<String, Object> subMap = new HashMap<>();
+                    subMap.put("text", sub);
+                    subMap.put("responseTime", i == subs.size() - 1 ? 30 : 15);
+                    normalizedSubs.add(subMap);
+                } else if (sub instanceof Map) {
+                    normalizedSubs.add((Map<String, Object>) sub);
+                }
+            }
+            generated.put("subQuestions", normalizedSubs);
+            // 정규화된 JSON으로 다시 직렬화
+            jsonText = objectMapper.writeValueAsString(generated);
+        }
+
         // DB에 저장
         Question question = new Question();
         question.setPartNumber(partNumber);
@@ -140,7 +166,13 @@ public class QuestionService {
             }
         }
 
-        questionRepository.save(question);
+        // 독립 트랜잭션으로 DB 저장 (self-invocation 문제 우회)
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        txTemplate.execute(status -> {
+            questionRepository.saveAndFlush(question);
+            return null;
+        });
         log.info("Part {} AI 생성 문제 DB 저장 완료: question_id={}", partNumber, question.getQuestionId());
 
         // 응답에 questionId와 시간 정보 추가
@@ -184,7 +216,12 @@ public class QuestionService {
         question.setIsSet(hasSubQuestions);
         question.setSetOrder(hasSubQuestions ? 1 : null);
 
-        questionRepository.save(question);
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        txTemplate.execute(status -> {
+            questionRepository.saveAndFlush(question);
+            return null;
+        });
         log.info("Part {} 기본 문제 DB 저장 완료: question_id={}", partNumber, question.getQuestionId());
 
         Map<String, Object> result = new HashMap<>(content);
