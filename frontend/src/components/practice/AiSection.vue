@@ -147,8 +147,8 @@
       </div>
     </div>
 
-    <!-- fallback 텍스트 (파싱 실패 시) -->
-    <div v-if="aiResult" class="ai-result card">
+    <!-- fallback 텍스트 (파싱 실패 시, feedbackData가 없을 때만) -->
+    <div v-if="aiResult && !feedbackData" class="ai-result card">
       <div class="ai-result-content" v-html="renderMarkdown(aiResult)"></div>
     </div>
   </div>

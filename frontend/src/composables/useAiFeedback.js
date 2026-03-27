@@ -222,7 +222,7 @@ export function useAiFeedback(store, currentPart, currentQuestion) {
               score: parsed.estimatedScore || null,
               strengthsText: parsed.strengths ? JSON.stringify(parsed.strengths) : null,
               feedbackText: parsed.improvements ? JSON.stringify(parsed.improvements) : null,
-              grammarCorrections: null
+              grammarCorrections: parsed.correctedAnswers ? JSON.stringify(parsed.correctedAnswers) : null
             })
           }
         } else {
@@ -235,14 +235,14 @@ export function useAiFeedback(store, currentPart, currentQuestion) {
         cachedFeedback.value = data
         aiResult.value = ''
 
-        // 평가 저장 (잘한점 + 개선할점 분리)
+        // 평가 저장 (잘한점 + 개선할점 + 수정답변)
         if (lastResponseId.value && store.saveEvaluation) {
           store.saveEvaluation({
             responseId: lastResponseId.value,
             score: data.estimatedScore || null,
             strengthsText: data.strengths ? JSON.stringify(data.strengths) : null,
             feedbackText: data.improvements ? JSON.stringify(data.improvements) : null,
-            grammarCorrections: null
+            grammarCorrections: data.correctedAnswers ? JSON.stringify(data.correctedAnswers) : null
           })
         }
       }

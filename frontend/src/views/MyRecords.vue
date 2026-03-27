@@ -33,6 +33,22 @@
         </button>
       </div>
 
+      <!-- 연습 모드 필터 -->
+      <div class="mode-filters">
+        <button
+          class="mode-btn"
+          :class="{ active: selectedMode === '' }"
+          @click="selectedMode = ''"
+        >전체</button>
+        <button
+          v-for="m in modes"
+          :key="m.code"
+          class="mode-btn"
+          :class="{ active: selectedMode === m.code }"
+          @click="selectedMode = m.code"
+        >{{ m.label }}</button>
+      </div>
+
       <!-- 기록 목록 -->
       <div class="records-list">
         <div
@@ -44,7 +60,7 @@
             <div class="record-info">
               <span class="record-part" :class="'part-' + record.partId">Part {{ record.partId }}</span>
               <span class="record-title">{{ record.partTitle }}</span>
-              <span class="record-q">문제 {{ record.questionIdx + 1 }}</span>
+              <span class="record-q">{{ modeLabel(record.practiceMode) }}</span>
             </div>
             <div class="record-right">
               <div class="record-date">{{ formatDate(record.createdAt) }}</div>
@@ -56,28 +72,50 @@
           <div v-if="expandedId === record.id" class="record-detail">
             <div v-if="detailLoading" class="detail-loading">불러오는 중...</div>
             <div v-else-if="detailData">
-              <!-- 문제 -->
-              <div class="detail-section">
-                <div class="detail-label">문제</div>
-                <div class="detail-question">
-                  <p v-if="detailData.questionContent?.text">{{ detailData.questionContent.text }}</p>
-                  <!-- 세트 서브질문 -->
-                  <div v-if="detailData.questionContent?.subQuestions" class="detail-subs">
-                    <div v-for="(sq, i) in detailData.questionContent.subQuestions" :key="i" class="detail-sub-item">
-                      <span class="sub-badge">Q{{ i + 1 }}</span>
-                      <span>{{ sq }}</span>
+              <!-- 세트 문항: 문항별 질문+답변+수정답변 카드 -->
+              <div v-if="detailData.questionContent?.subQuestions" class="qa-cards">
+                <div v-for="(sq, i) in detailData.questionContent.subQuestions" :key="i" class="qa-card">
+                  <div class="qa-question">
+                    <span class="sub-badge">Q{{ i + 1 }}</span>
+                    <span>{{ typeof sq === 'object' ? sq.text : sq }}</span>
+                    <span v-if="typeof sq === 'object' && sq.responseTime" class="response-time">{{ sq.responseTime }}초</span>
+                  </div>
+                  <div class="qa-answer" :class="{ 'no-answer': !parsedSubAnswers(detailData)?.[i]?.answer }">
+                    <span class="answer-label">내 답변</span>
+                    {{ parsedSubAnswers(detailData)?.[i]?.answer || '답변 없음' }}
+                  </div>
+                  <div v-if="parsedCorrectedAnswers(detailData)?.[i]" class="qa-corrected">
+                    <div class="corrected-en">
+                      <span class="answer-label corrected-label">수정 답변</span>
+                      {{ parsedCorrectedAnswers(detailData)[i].answer }}
+                    </div>
+                    <div v-if="parsedCorrectedAnswers(detailData)[i].answerKo" class="corrected-ko">
+                      {{ parsedCorrectedAnswers(detailData)[i].answerKo }}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- 내 답변 -->
-              <div class="detail-section">
-                <div class="detail-label">내 답변</div>
-                <div class="detail-answer">
-                  <p v-if="detailData.sttText">{{ detailData.sttText }}</p>
-                  <p v-else-if="detailData.textAnswer">{{ detailData.textAnswer }}</p>
-                  <p v-else class="no-answer">답변 없음</p>
+              <!-- 일반 문항: 질문+답변+수정답변 -->
+              <div v-else>
+                <div v-if="detailData.questionContent?.text" class="detail-section">
+                  <div class="detail-label">문제</div>
+                  <div class="detail-question">{{ detailData.questionContent.text }}</div>
+                </div>
+                <div class="detail-section">
+                  <div class="detail-label">내 답변</div>
+                  <div class="detail-answer">
+                    <p v-if="detailData.sttText">{{ detailData.sttText }}</p>
+                    <p v-else-if="detailData.textAnswer">{{ detailData.textAnswer }}</p>
+                    <p v-else class="no-answer">답변 없음</p>
+                  </div>
+                </div>
+                <div v-if="parsedCorrectedAnswers(detailData)?.[0]" class="detail-section">
+                  <div class="detail-label">수정 답변</div>
+                  <div class="corrected-block">
+                    <p class="corrected-en-text">{{ parsedCorrectedAnswers(detailData)[0].answer }}</p>
+                    <p v-if="parsedCorrectedAnswers(detailData)[0].answerKo" class="corrected-ko-text">{{ parsedCorrectedAnswers(detailData)[0].answerKo }}</p>
+                  </div>
                 </div>
               </div>
 
@@ -87,10 +125,6 @@
                 <audio :src="'/uploads/' + detailData.audioFilePath" controls class="detail-audio"></audio>
               </div>
 
-              <!-- 연습 모드 -->
-              <div class="detail-meta">
-                <span class="meta-tag">{{ modeLabel(detailData.practiceMode) }}</span>
-              </div>
             </div>
             <div v-else class="detail-empty">상세 정보를 불러올 수 없습니다.</div>
           </div>
@@ -106,6 +140,13 @@ import { useSpeakingStore } from '../stores/speaking'
 
 const store = useSpeakingStore()
 const selectedPart = ref(0)
+const selectedMode = ref('')
+const modes = [
+  { code: 'REAL', label: '실전 연습' },
+  { code: 'FREE', label: '자유 연습' },
+  { code: 'KOREAN', label: '한글 연습' },
+  { code: 'MOCK', label: '모의고사' }
+]
 const expandedId = ref(null)
 const detailLoading = ref(false)
 const detailData = ref(null)
@@ -122,8 +163,14 @@ const availableParts = computed(() => {
 })
 
 const filteredRecords = computed(() => {
-  if (selectedPart.value === 0) return store.records
-  return store.records.filter(r => r.partId === selectedPart.value)
+  let records = store.records
+  if (selectedPart.value !== 0) {
+    records = records.filter(r => r.partId === selectedPart.value)
+  }
+  if (selectedMode.value) {
+    records = records.filter(r => r.practiceMode === selectedMode.value)
+  }
+  return records
 })
 
 async function toggleDetail(record) {
@@ -178,6 +225,26 @@ function formatDate(dateStr) {
   const hours = d.getHours().toString().padStart(2, '0')
   const minutes = d.getMinutes().toString().padStart(2, '0')
   return `${month}/${day} ${hours}:${minutes}`
+}
+
+function parsedSubAnswers(detail) {
+  if (!detail?.sttText) return null
+  try {
+    const parsed = JSON.parse(detail.sttText)
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].question) {
+      return parsed
+    }
+  } catch (e) { /* not JSON, single answer */ }
+  return null
+}
+
+function parsedCorrectedAnswers(detail) {
+  if (!detail?.grammarCorrections) return null
+  try {
+    const parsed = JSON.parse(detail.grammarCorrections)
+    if (Array.isArray(parsed)) return parsed
+  } catch (e) { /* not JSON */ }
+  return null
 }
 
 function modeLabel(mode) {
@@ -244,6 +311,27 @@ function confirmClear() {
 
 .part-tab.active .tab-count { background: #4A90D9; color: #fff; }
 
+.mode-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  padding: 6px 14px;
+  border: 1px solid #ddd;
+  border-radius: 20px;
+  background: #fff;
+  font-size: 0.82rem;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover { border-color: #4A90D9; color: #4A90D9; }
+.mode-btn.active { background: #4A90D9; color: #fff; border-color: #4A90D9; }
+
 .records-list { display: flex; flex-direction: column; gap: 8px; }
 
 .record-card { overflow: hidden; }
@@ -304,6 +392,112 @@ function confirmClear() {
   text-align: center;
   padding: 20px;
   color: #999;
+}
+
+.qa-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.qa-card {
+  border: 1px solid #e8ecf1;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.qa-question {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f5f8fc;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: #333;
+}
+
+.qa-question .response-time {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: #999;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.qa-answer {
+  padding: 12px 16px;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: #333;
+  border-top: 1px solid #e8ecf1;
+}
+
+.qa-answer .answer-label {
+  display: inline-block;
+  background: #27ae60;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 8px;
+  margin-right: 8px;
+}
+
+.qa-answer.no-answer {
+  color: #999;
+  font-style: italic;
+}
+
+.qa-answer.no-answer .answer-label {
+  background: #ccc;
+}
+
+.qa-corrected {
+  padding: 12px 16px;
+  background: #f0faf0;
+  border-top: 1px dashed #c8e6c9;
+}
+
+.corrected-en {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: #2e7d32;
+}
+
+.corrected-label {
+  background: #8e44ad !important;
+}
+
+.corrected-ko {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #666;
+  padding-left: 4px;
+  border-left: 2px solid #ddd;
+}
+
+.corrected-block {
+  padding: 12px 16px;
+  background: #f0faf0;
+  border-radius: 8px;
+  border-left: 3px solid #27ae60;
+}
+
+.corrected-en-text {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #2e7d32;
+  margin: 0;
+}
+
+.corrected-ko-text {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #666;
 }
 
 .detail-section {

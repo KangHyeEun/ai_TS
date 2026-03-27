@@ -524,11 +524,15 @@ function finishFreeAnswer() {
     partTitle: currentPart.value.title,
     practiceMode: practiceModeCode.value
   })
+  // 세트 문항: 모든 sub-answer를 JSON으로 저장
+  const allAnswersText = isSetPart.value
+    ? JSON.stringify(subAnswers.value.map(a => ({ question: a.text, answer: a.sttText || '' })))
+    : (recorder.sttText.value || null)
   store.saveUserResponse({
-    questionId: currentQuestion.value?.questionId,
+    questionId: getCurrentQuestionId(),
     practiceMode: practiceModeCode.value,
     audioFilePath: recorder.savedAudioUrl.value || null,
-    sttText: recorder.sttText.value || null,
+    sttText: allAnswersText,
     textAnswer: null
   }).then(responseId => {
     if (responseId) ai.setResponseId(responseId)
@@ -562,14 +566,18 @@ function submitFreeTextAnswer() {
     partTitle: currentPart.value.title,
     practiceMode: practiceModeCode.value
   })
+  // 세트 문항: 모든 sub-answer를 JSON으로 저장
+  const allAnswersText = isSetPart.value
+    ? JSON.stringify(subAnswers.value.map(a => ({ question: a.text, answer: a.sttText || '' })))
+    : null
   store.saveUserResponse({
-    questionId: currentQuestion.value?.questionId,
+    questionId: getCurrentQuestionId(),
     practiceMode: practiceModeCode.value,
-    audioFilePath: null, sttText: null,
-    textAnswer: freeTextAnswer.value || null
+    audioFilePath: null,
+    sttText: allAnswersText,
+    textAnswer: isSetPart.value ? null : (freeTextAnswer.value || null)
   }).then(responseId => {
     if (responseId) ai.setResponseId(responseId)
-    // responseId 설정 후 자동 피드백 요청
     autoRequestFeedback()
   })
 }

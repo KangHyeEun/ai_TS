@@ -3,9 +3,13 @@ package com.aihye.toeicspeaking.service;
 import com.aihye.toeicspeaking.dto.RecordRequest;
 import com.aihye.toeicspeaking.entity.PracticeRecord;
 import com.aihye.toeicspeaking.entity.Question;
+import com.aihye.toeicspeaking.entity.Evaluation;
+import com.aihye.toeicspeaking.entity.UserResponse;
+import com.aihye.toeicspeaking.repository.EvaluationRepository;
 import com.aihye.toeicspeaking.repository.QuestionRepository;
 import com.aihye.toeicspeaking.repository.RecordRepository;
 import com.aihye.toeicspeaking.repository.StudyStatsRepository;
+import com.aihye.toeicspeaking.repository.UserResponseRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +23,8 @@ public class RecordService {
 
     private final RecordRepository recordRepository;
     private final QuestionRepository questionRepository;
+    private final UserResponseRepository userResponseRepository;
+    private final EvaluationRepository evaluationRepository;
     private final StudyStatsRepository studyStatsRepository;
     private final ObjectMapper objectMapper;
 
@@ -35,6 +41,7 @@ public class RecordService {
      */
     public List<Map<String, Object>> getRecordsWithDetail(Integer userId) {
         List<PracticeRecord> records = recordRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        List<UserResponse> responses = userResponseRepository.findByUserIdOrderBySubmittedAtDesc(userId);
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (PracticeRecord r : records) {
@@ -58,6 +65,23 @@ public class RecordService {
                         item.put("questionContent", Map.of("text", q.getContentText()));
                     }
                 });
+
+                // 해당 문제의 가장 최근 답변 + 평가 조회
+                responses.stream()
+                        .filter(resp -> r.getQuestionId().equals(resp.getQuestionId()))
+                        .findFirst()
+                        .ifPresent(resp -> {
+                            item.put("sttText", resp.getSttText());
+                            item.put("textAnswer", resp.getTextAnswer());
+                            item.put("audioFilePath", resp.getAudioFilePath());
+
+                            // 해당 응답의 최신 평가 (수정 답변 포함)
+                            evaluationRepository.findTopByResponseIdOrderByEvaluatedAtDesc(resp.getResponseId())
+                                    .ifPresent(eval -> {
+                                        item.put("score", eval.getScore());
+                                        item.put("grammarCorrections", eval.getGrammarCorrections());
+                                    });
+                        });
             }
 
             result.add(item);
