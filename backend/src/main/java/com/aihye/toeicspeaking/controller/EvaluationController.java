@@ -31,6 +31,11 @@ public class EvaluationController {
         }
     }
 
+    @GetMapping("/key-expressions/{userId}")
+    public List<Map<String, Object>> getKeyExpressions(@PathVariable Integer userId) {
+        return evaluationService.getKeyExpressionsByUserId(userId);
+    }
+
     @GetMapping("/response/{responseId}")
     public List<Evaluation> getByResponseId(@PathVariable Integer responseId) {
         return evaluationService.getEvaluationsByResponseId(responseId);

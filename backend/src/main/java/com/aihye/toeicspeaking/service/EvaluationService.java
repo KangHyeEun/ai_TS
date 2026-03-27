@@ -31,6 +31,29 @@ public class EvaluationService {
         return evaluationRepository.save(evaluation);
     }
 
+    public List<Map<String, Object>> getKeyExpressionsByUserId(Integer userId) {
+        List<Evaluation> evaluations = evaluationRepository.findAll();
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+
+        for (Evaluation eval : evaluations) {
+            if (eval.getKeyExpressions() == null || eval.getKeyExpressions().isEmpty()) continue;
+            try {
+                List<?> expressions = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(eval.getKeyExpressions(), List.class);
+                for (Object expr : expressions) {
+                    if (expr instanceof Map) {
+                        Map<String, Object> item = new java.util.LinkedHashMap<>((Map<String, Object>) expr);
+                        item.put("evaluationId", eval.getEvaluationId());
+                        item.put("score", eval.getScore());
+                        item.put("evaluatedAt", eval.getEvaluatedAt());
+                        result.add(item);
+                    }
+                }
+            } catch (Exception e) { /* skip invalid JSON */ }
+        }
+        return result;
+    }
+
     public List<Evaluation> getEvaluationsByResponseId(Integer responseId) {
         return evaluationRepository.findByResponseIdOrderByEvaluatedAtDesc(responseId);
     }
