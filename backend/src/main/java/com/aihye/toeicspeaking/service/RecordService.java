@@ -3,7 +3,6 @@ package com.aihye.toeicspeaking.service;
 import com.aihye.toeicspeaking.dto.RecordRequest;
 import com.aihye.toeicspeaking.entity.PracticeRecord;
 import com.aihye.toeicspeaking.entity.Question;
-import com.aihye.toeicspeaking.entity.Evaluation;
 import com.aihye.toeicspeaking.entity.UserResponse;
 import com.aihye.toeicspeaking.repository.EvaluationRepository;
 import com.aihye.toeicspeaking.repository.QuestionRepository;
@@ -75,11 +74,17 @@ public class RecordService {
                             item.put("textAnswer", resp.getTextAnswer());
                             item.put("audioFilePath", resp.getAudioFilePath());
 
-                            // 해당 응답의 최신 평가 (수정 답변 포함)
+                            // 해당 응답의 최신 평가 (전체 피드백 데이터)
                             evaluationRepository.findTopByResponseIdOrderByEvaluatedAtDesc(resp.getResponseId())
                                     .ifPresent(eval -> {
                                         item.put("score", eval.getScore());
-                                        item.put("grammarCorrections", eval.getGrammarCorrections());
+                                        item.put("scoreComment", eval.getScoreComment());
+                                        item.put("targetAnalysis", eval.getTargetAnalysis());
+                                        item.put("targetTips", eval.getTargetTips());
+                                        item.put("strengthsText", eval.getStrengthsText());
+                                        item.put("evaluationFeedbackText", eval.getFeedbackText());
+                                        item.put("correctedAnswers", eval.getCorrectedAnswers());
+                                        item.put("keyExpressions", eval.getKeyExpressions());
                                     });
                         });
             }

@@ -187,17 +187,17 @@ export const useSpeakingStore = defineStore('speaking', () => {
   }
 
   // ========== Evaluation (AI 평가 저장) ==========
-  async function saveEvaluation({ responseId, score, strengthsText, feedbackText, grammarCorrections }) {
+  async function saveEvaluation(evalData) {
     try {
       const res = await fetch('/api/evaluations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responseId, score, strengthsText, feedbackText, grammarCorrections })
+        body: JSON.stringify(evalData)
       })
       if (!res.ok) return null
       const data = await res.json()
-      if (score != null) {
-        updateStudyScore(score)
+      if (evalData.score != null) {
+        updateStudyScore(evalData.score)
       }
       return data.evaluationId
     } catch (err) {

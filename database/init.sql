@@ -61,9 +61,13 @@ CREATE TABLE IF NOT EXISTS evaluations (
   evaluation_id INT AUTO_INCREMENT PRIMARY KEY,
   response_id INT NOT NULL,
   score INT DEFAULT NULL COMMENT '점수 (0~200)',
+  score_comment TEXT DEFAULT NULL COMMENT '점수 설명',
+  target_analysis TEXT DEFAULT NULL COMMENT '목표 분석',
+  target_tips TEXT DEFAULT NULL COMMENT '목표 달성 팁 (JSON 배열)',
   strengths_text TEXT DEFAULT NULL COMMENT '잘한 점 (JSON 배열)',
   feedback_text TEXT DEFAULT NULL COMMENT '개선할 점 (JSON 배열)',
-  grammar_corrections TEXT DEFAULT NULL COMMENT '문법 교정 내용',
+  corrected_answers TEXT DEFAULT NULL COMMENT '수정 답변 (JSON 배열)',
+  key_expressions TEXT DEFAULT NULL COMMENT '핵심 표현 (JSON 배열)',
   evaluated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (response_id) REFERENCES user_responses(response_id) ON DELETE CASCADE
 );

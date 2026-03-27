@@ -25,14 +25,26 @@ public class Evaluation {
     @Column(name = "score")
     private Integer score;
 
+    @Column(name = "score_comment", columnDefinition = "TEXT")
+    private String scoreComment;
+
+    @Column(name = "target_analysis", columnDefinition = "TEXT")
+    private String targetAnalysis;
+
+    @Column(name = "target_tips", columnDefinition = "TEXT")
+    private String targetTips;
+
     @Column(name = "strengths_text", columnDefinition = "TEXT")
     private String strengthsText;
 
     @Column(name = "feedback_text", columnDefinition = "TEXT")
     private String feedbackText;
 
-    @Column(name = "grammar_corrections", columnDefinition = "TEXT")
-    private String grammarCorrections;
+    @Column(name = "corrected_answers", columnDefinition = "TEXT")
+    private String correctedAnswers;
+
+    @Column(name = "key_expressions", columnDefinition = "TEXT")
+    private String keyExpressions;
 
     @Column(name = "evaluated_at", updatable = false)
     private LocalDateTime evaluatedAt;

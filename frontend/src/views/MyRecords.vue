@@ -239,9 +239,9 @@ function parsedSubAnswers(detail) {
 }
 
 function parsedCorrectedAnswers(detail) {
-  if (!detail?.grammarCorrections) return null
+  if (!detail?.correctedAnswers) return null
   try {
-    const parsed = JSON.parse(detail.grammarCorrections)
+    const parsed = JSON.parse(detail.correctedAnswers)
     if (Array.isArray(parsed)) return parsed
   } catch (e) { /* not JSON */ }
   return null

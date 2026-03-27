@@ -179,6 +179,22 @@ export function useAiFeedback(store, currentPart, currentQuestion) {
       }
     }
 
+    function saveAllFeedback(fbData) {
+      if (!lastResponseId.value || !store.saveEvaluation) return
+      console.log('[saveAllFeedback] keys:', Object.keys(fbData).filter(k => k !== 'raw'))
+      store.saveEvaluation({
+        responseId: lastResponseId.value,
+        score: fbData.estimatedScore || null,
+        scoreComment: fbData.scoreComment || null,
+        targetAnalysis: fbData.targetAnalysis || null,
+        targetTips: fbData.targetTips ? JSON.stringify(fbData.targetTips) : null,
+        strengthsText: fbData.strengths ? JSON.stringify(fbData.strengths) : null,
+        feedbackText: fbData.improvements ? JSON.stringify(fbData.improvements) : null,
+        correctedAnswers: fbData.correctedAnswers ? JSON.stringify(fbData.correctedAnswers) : null,
+        keyExpressions: fbData.keyExpressions ? JSON.stringify(fbData.keyExpressions) : null
+      })
+    }
+
     aiLoading.value = true
     aiMode.value = 'feedback'
     aiResult.value = ''
@@ -215,16 +231,7 @@ export function useAiFeedback(store, currentPart, currentQuestion) {
           feedbackData.value = parsed
           cachedFeedback.value = parsed
           aiResult.value = ''
-          // 평가 저장
-          if (lastResponseId.value && store.saveEvaluation) {
-            store.saveEvaluation({
-              responseId: lastResponseId.value,
-              score: parsed.estimatedScore || null,
-              strengthsText: parsed.strengths ? JSON.stringify(parsed.strengths) : null,
-              feedbackText: parsed.improvements ? JSON.stringify(parsed.improvements) : null,
-              grammarCorrections: parsed.correctedAnswers ? JSON.stringify(parsed.correctedAnswers) : null
-            })
-          }
+          saveAllFeedback(parsed)
         } else {
           aiResult.value = data.raw
           cachedFeedback.value = data
@@ -234,17 +241,7 @@ export function useAiFeedback(store, currentPart, currentQuestion) {
         feedbackData.value = data
         cachedFeedback.value = data
         aiResult.value = ''
-
-        // 평가 저장 (잘한점 + 개선할점 + 수정답변)
-        if (lastResponseId.value && store.saveEvaluation) {
-          store.saveEvaluation({
-            responseId: lastResponseId.value,
-            score: data.estimatedScore || null,
-            strengthsText: data.strengths ? JSON.stringify(data.strengths) : null,
-            feedbackText: data.improvements ? JSON.stringify(data.improvements) : null,
-            grammarCorrections: data.correctedAnswers ? JSON.stringify(data.correctedAnswers) : null
-          })
-        }
+        saveAllFeedback(data)
       }
     } catch (err) {
       console.error('피드백 요청 실패:', err)
